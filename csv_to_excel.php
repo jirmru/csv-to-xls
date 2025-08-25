@@ -35,7 +35,19 @@ function csv_to_xls(string $csv_text, string $filename = 'export.xls', bool $has
 
     // HTTPヘッダーを設定してExcelファイルとしてダウンロードさせる
     header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="' . rawurlencode($filename) . '"');
+
+    // ブラウザによって日本語ファイル名のエンコーディングを切り替える
+    $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    $encoded_filename = rawurlencode($filename);
+
+    if (preg_match('/(MSIE|Trident)/', $user_agent)) {
+        // IE(Trident)用の処理
+        header('Content-Disposition: attachment; filename="' . $encoded_filename . '"');
+    } else {
+        // モダンブラウザ用の処理 (RFC 6266)
+        header('Content-Disposition: attachment; filename*=UTF-8\'\'' . $encoded_filename);
+    }
+
     header('Cache-Control: max-age=0');
 
     // Excelでの文字化けを確実に防ぐため、BOMを先頭に付与
