@@ -1,18 +1,18 @@
 <?php
 
 /**
- * CSVテキストをExcel（.xls）ファイルとして出力する関数
+ * CSVテキストをExcel（.xlsx）ファイルとして出力する関数
  *
- * 注意: この関数は厳密な.xlsバイナリを生成するのではなく、
+ * 注意: この関数は厳密な.xlsxバイナリを生成するのではなく、
  * Excelが解釈可能なHTMLテーブルを生成します。
  * これにより、外部ライブラリなしで動作し、日本語の文字化けを防ぎます。
  *
  * @param string $csv_text      日本語を含むCSV形式のテキストデータ
- * @param string $filename      出力するファイル名 (例: 'report.xls')
+ * @param string $filename      出力するファイル名 (例: 'report.xlsx')
  * @param bool   $has_header    trueの場合、CSVの1行目を見出し行として太字で装飾する
  * @return void
  */
-function csv_to_xls(string $csv_text, string $filename = 'export.xls', bool $has_header = true): void
+function csv_to_xlsx(string $csv_text, string $filename = 'export.xlsx', bool $has_header = true): void
 {
     // 内部処理をUTF-8に統一
     mb_internal_encoding('UTF-8');
@@ -34,8 +34,16 @@ function csv_to_xls(string $csv_text, string $filename = 'export.xls', bool $has
     }
 
     // HTTPヘッダーを設定してExcelファイルとしてダウンロードさせる
-    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="' . rawurlencode($filename) . '"');
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    $encoded_filename = rawurlencode($filename);
+    if (preg_match('/(MSIE|Trident)/', $user_agent)) {
+        // IE(Trident)用の処理
+        header('Content-Disposition: attachment; filename="' . $encoded_filename . '"');
+    } else {
+        // モダンブラウザ用の処理 (RFC 6266)
+        header('Content-Disposition: attachment; filename*=UTF-8\'\'' . $encoded_filename);
+    }
     header('Cache-Control: max-age=0');
 
     // Excelでの文字化けを確実に防ぐため、BOMを先頭に付与
@@ -91,5 +99,5 @@ CSV;
     // 第1引数: CSVテキスト
     // 第2引数: 出力ファイル名
     // 第3引数: 1行目を見出しとして扱うか (true: はい, false: いいえ)
-    csv_to_xls($sample_csv, '製品リスト.xls', true);
+    csv_to_xlsx($sample_csv, '製品リスト.xlsx', true);
 }
