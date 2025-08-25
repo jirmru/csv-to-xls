@@ -35,7 +35,24 @@ function csv_to_xls(string $csv_text, string $filename = 'export.xls', bool $has
 
     // HTTPヘッダーを設定してExcelファイルとしてダウンロードさせる
     header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="' . rawurlencode($filename) . '"');
+
+    // ブラウザごとにファイル名のエンコーディングを調整する
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    $encoded_filename = rawurlencode($filename);
+
+    // IE, Edge (古いバージョン) 対策
+    // Edge/ のようにスラッシュをエスケープして、Chromium版Edge (Edg/) と区別する
+    if (preg_match('/(MSIE|Trident|Edge\/)/i', $ua)) {
+        header('Content-Disposition: attachment; filename="' . $encoded_filename . '"');
+    } else {
+        // モダンブラウザ (Chrome, Firefox, Safari, Chromium Edge) 向け
+        // RFC 6266 に準拠し、filename* を使用する
+        // 同時に、古いブラウザ向けに Fallback として filename も指定する
+        // Fallbackのファイル名からはダブルクォートを削除しておく
+        $fallback_filename = str_replace('"', '', $filename);
+        header('Content-Disposition: attachment; filename="' . $fallback_filename . '"; filename*=UTF-8\'\'' . $encoded_filename);
+    }
+
     header('Cache-Control: max-age=0');
 
     // Excelでの文字化けを確実に防ぐため、BOMを先頭に付与
