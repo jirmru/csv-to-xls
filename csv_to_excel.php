@@ -1,18 +1,19 @@
 <?php
 
 /**
- * CSVテキストをExcel（.xls）ファイルとして出力する関数
+ * CSVテキストを標準的なCSVファイルとして出力する関数
  *
- * 注意: この関数は厳密な.xlsバイナリを生成するのではなく、
- * Excelが解釈可能なHTMLテーブルを生成します。
- * これにより、外部ライブラリなしで動作し、日本語の文字化けを防ぎます。
+ * この関数は、入力されたCSV文字列を解析し、
+ * UTF-8エンコードされたCSVファイルとしてブラウザにダウンロードさせます。
+ * - 日本語のファイル名が文字化けしないようにContent-Dispositionヘッダーを調整します。
+ * - Excelでファイルを開いた際に文字化けを防ぐため、BOM（Byte Order Mark）を付与します。
+ * - fputcsvを使用して、RFC 4180に準拠したCSVを生成します。
  *
  * @param string $csv_text      日本語を含むCSV形式のテキストデータ
- * @param string $filename      出力するファイル名 (例: 'report.xls')
- * @param bool   $has_header    trueの場合、CSVの1行目を見出し行として太字で装飾する
+ * @param string $filename      出力するファイル名 (例: 'report.csv')
  * @return void
  */
-function csv_to_xls(string $csv_text, string $filename = 'export.xls', bool $has_header = true): void
+function generate_csv_output(string $csv_text, string $filename = 'export.csv'): void
 {
     // 内部処理をUTF-8に統一
     mb_internal_encoding('UTF-8');
@@ -33,40 +34,44 @@ function csv_to_xls(string $csv_text, string $filename = 'export.xls', bool $has
         return; // データがなければ何もしない
     }
 
-    // HTTPヘッダーを設定してExcelファイルとしてダウンロードさせる
-    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="' . rawurlencode($filename) . '"');
+    // HTTPヘッダーを設定してCSVファイルとしてダウンロードさせる
+    header('Content-Type: text/csv; charset=UTF-8');
+
+    // ファイル名のエンコーディング問題を解決するため、RFC 6266に準拠したヘッダーを使用
+    $encoded_filename = rawurlencode($filename);
+    // モダンブラウザ向けのfilename*と、古いブラウザ向けのfilenameを提供
+    header('Content-Disposition: attachment; filename*=UTF-8\'\'' . $encoded_filename . '; filename="' . $filename . '"');
+
     header('Cache-Control: max-age=0');
 
-    // Excelでの文字化けを確実に防ぐため、BOMを先頭に付与
-    echo "\xEF\xBB\xBF";
-
-    // HTMLテーブルとして出力
-    echo '<html><head><meta charset="UTF-8"></head><body>';
-    echo '<table>';
-
-    $is_first_row = true;
-    foreach ($data as $row) {
-        echo '<tr>';
-        if ($has_header && $is_first_row) {
-            // 見出し行の処理
-            foreach ($row as $cell) {
-                echo '<th style="font-weight: bold; background-color: #f0f0f0;">' . htmlspecialchars($cell, ENT_QUOTES, 'UTF-8') . '</th>';
-            }
-            $is_first_row = false;
-        } else {
-            // データ行の処理
-            foreach ($row as $cell) {
-                // '0'で始まる商品コードなどが数値に変換されるのを防ぐため、styleでmso-number-formatを指定
-                $style = is_numeric($cell) && strlen($cell) < 15 ? '' : 'style="mso-number-format:\'@\'"';
-                echo '<td ' . $style . '>' . htmlspecialchars($cell, ENT_QUOTES, 'UTF-8') . '</td>';
-            }
-        }
-        echo '</tr>';
+    // メモリストリームを開いてCSVデータを書き込む
+    $handle = fopen('php://memory', 'w');
+    if ($handle === false) {
+        // @codeCoverageIgnoreStart
+        // In a normal environment, this should not fail.
+        // But as a good practice, we handle the error case.
+        header("HTTP/1.1 500 Internal Server Error");
+        echo "Failed to create memory stream.";
+        exit;
+        // @codeCoverageIgnoreEnd
     }
 
-    echo '</table>';
-    echo '</body></html>';
+    // Excelでの文字化けを確実に防ぐため、BOMを先頭に付与
+    fwrite($handle, "\xEF\xBB\xBF");
+
+    // fputcsvでデータを書き込む
+    foreach ($data as $row) {
+        fputcsv($handle, $row);
+    }
+
+    // ストリームの先頭にポインタを戻す
+    rewind($handle);
+
+    // ストリームの内容を読み込んで出力
+    echo stream_get_contents($handle);
+
+    // ハンドルを閉じる
+    fclose($handle);
 
     // 処理を終了
     exit;
@@ -75,7 +80,7 @@ function csv_to_xls(string $csv_text, string $filename = 'export.xls', bool $has
 // --- 以下、関数の使用例 ---
 
 // このファイルがWebサーバー経由で直接アクセスされた場合のみ、
-// 以下のサンプルコードが実行され、Excelファイルがダウンロードされます。
+// 以下のサンプルコードが実行され、CSVファイルがダウンロードされます。
 if (isset($_SERVER['REQUEST_URI'])) {
 
     // サンプルCSVデータ (日本語、特殊文字、カンマ、改行を含む)
@@ -90,6 +95,5 @@ CSV;
     // 関数を呼び出し
     // 第1引数: CSVテキスト
     // 第2引数: 出力ファイル名
-    // 第3引数: 1行目を見出しとして扱うか (true: はい, false: いいえ)
-    csv_to_xls($sample_csv, '製品リスト.xls', true);
+    generate_csv_output($sample_csv, '製品リスト.csv');
 }
